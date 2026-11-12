@@ -1,0 +1,28 @@
+rules_version = '2';
+
+// Mêmes principes que firestore.rules : accès réservé aux utilisateurs authentifiés
+// (voir src/authService.ts). Utilisé pour les photos de véhicules et documents
+// administratifs (carte grise, patente, vignette, carte de transport, carte de
+// stationnement) importés depuis VehicleForm.tsx / VehicleDetailPanel.tsx.
+//
+// Une limite de taille (10 Mo) est appliquée ici en plus du contrôle déjà fait côté
+// application (src/utils/uploadImage.ts), en cas de contournement de l'interface.
+service firebase.storage {
+  match /b/{bucket}/o {
+    match /vehicles/{vehicleId}/{fileName} {
+      allow read, write: if request.auth != null
+                          && request.resource.size < 10 * 1024 * 1024
+                          && (request.resource.contentType.matches('image/.*') || request.resource.contentType == 'application/pdf');
+      allow delete: if request.auth != null;
+    }
+
+    // Documents des chauffeurs (permis de conduire recto/verso, photo) importés depuis
+    // DriverManagement.tsx. Mêmes contraintes que pour les véhicules.
+    match /drivers/{driverId}/{fileName} {
+      allow read, write: if request.auth != null
+                          && request.resource.size < 10 * 1024 * 1024
+                          && (request.resource.contentType.matches('image/.*') || request.resource.contentType == 'application/pdf');
+      allow delete: if request.auth != null;
+    }
+  }
+}
