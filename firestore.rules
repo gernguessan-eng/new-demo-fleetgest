@@ -1,0 +1,19 @@
+rules_version = '2';
+
+// Ces règles autorisent la lecture/écriture uniquement aux sessions authentifiées.
+// FleetGest a un vrai écran de connexion (email/mot de passe, voir src/authService.ts et
+// src/components/Login.tsx) : chaque utilisateur doit créer un compte ou se connecter pour
+// que "request.auth != null" soit vrai.
+//
+// ⚠️ Ce niveau de protection empêche un visiteur totalement extérieur d'accéder à vos données,
+// mais NE distingue PAS les utilisateurs entre eux (tout utilisateur connecté peut lire/écrire
+// toutes les données). Pour une séparation plus fine par rôle (Administrateur/Agent/Client),
+// il faudra faire évoluer ces règles en s'appuyant sur le champ "role" stocké dans
+// users/{uid} (voir src/authService.ts).
+service cloud.firestore {
+  match /databases/{database}/documents {
+    match /{document=**} {
+      allow read, write: if request.auth != null;
+    }
+  }
+}
