@@ -244,11 +244,24 @@ export default function Dashboard() {
   // Détail ouvert depuis une zone (barre ou carte) ou une case Sinistres / Immobilisations
   type DetailKind = 'zone-travail' | 'zone-carto' | 'sinistres' | 'immobilisations' | 'depenses-zone';
   const [detail, setDetail] = useState<null | { kind: DetailKind; key: string }>(null);
+  // Chauffeur(s) d'un véhicule = chauffeurs du menu Chauffeurs affectés à ce véhicule
+  // + nom saisi dans la case « Conducteur » de la fiche véhicule (même s'il n'existe pas
+  // dans le menu Chauffeurs, ou si l'affectation n'a été faite que d'un seul côté).
   const driverByVehicle = useMemo(() => {
+    const norm = (s: string) => s.toLowerCase().split(/\s+/).filter(Boolean).sort().join(' ');
     const m = new Map<string, string>();
-    drivers.forEach(d => { if (d.vehicule_affecte_id) m.set(d.vehicule_affecte_id, `${d.prenom} ${d.nom}`); });
+    vehicles.forEach(v => {
+      const names: string[] = [];
+      const seen = new Set<string>();
+      const add = (label: string) => { const k = norm(label); if (k && !seen.has(k)) { seen.add(k); names.push(label.trim()); } };
+      drivers.filter(d => d.vehicule_affecte_id === v.id).forEach(d => add(`${d.prenom} ${d.nom}`));
+      const c = (v.conducteur || '').trim();
+      if (c && c.toLowerCase() !== 'autre') add(c);
+      if (names.length) m.set(v.id, names.join(' · '));
+    });
     return m;
-  }, [drivers]);
+  }, [drivers, vehicles]);
+  const zoneTravailOf = (v: Vehicle) => v.zone_travail?.trim() || 'Non renseigné';
 
   const initialFilters = useMemo(loadFilters, []);
   const [filterDept, setFilterDept] = useState(initialFilters.dept);
@@ -332,7 +345,7 @@ export default function Dashboard() {
   const totalExp = fe.reduce((s, e) => s + e.montant, 0);
   const vehicleById = useMemo(() => new Map(vehicles.map(v => [v.id, v])), [vehicles]);
   // Zone de travail d'une dépense = case « Zone de travail » de la fiche du véhicule concerné.
-  const zoneOfExpense = (vehicleId: string) => { const v = vehicleById.get(vehicleId); return v ? (v.zone_travail?.trim() || 'Non renseigné') : 'Véhicule inconnu'; };
+  const zoneOfExpense = (vehicleId: string) => { const v = vehicleById.get(vehicleId); return v ? zoneTravailOf(v) : 'Véhicule inconnu'; };
   const expenseByZone = useMemo(() => {
     const m = new Map<string, { value: number; count: number }>();
     fe.forEach(e => { const z = zoneOfExpense(e.vehicleId); const c = m.get(z) || { value: 0, count: 0 }; m.set(z, { value: c.value + e.montant, count: c.count + 1 }); });
@@ -385,7 +398,7 @@ export default function Dashboard() {
   const fleetByGenre = useMemo(() => { const m = new Map<string, number>(); fv.forEach(v => { const g = v.genre?.trim() || 'Non renseigné'; m.set(g, (m.get(g) || 0) + 1); }); return Array.from(m.entries()).map(([name, value]) => ({ name, value })).sort((a, b) => b.value - a.value); }, [fv]);
   // Répartition de la flotte / Type de véhicule : basé uniquement sur la case « Carrosserie ».
   const fleetByType = useMemo(() => { const m = new Map<string, number>(); fv.forEach(v => { const t = v.carrosserie?.trim() || 'Non renseigné'; m.set(t, (m.get(t) || 0) + 1); }); return Array.from(m.entries()).map(([name, value]) => ({ name, value })).sort((a, b) => b.value - a.value); }, [fv]);
-  const fleetByZone = useMemo(() => { const m = new Map<string, number>(); fv.forEach(v => { const z = v.zone_travail || 'Non renseigné'; m.set(z, (m.get(z) || 0) + 1); }); return Array.from(m.entries()).map(([name, value]) => ({ name, value })).sort((a, b) => b.value - a.value); }, [fv]);
+  const fleetByZone = useMemo(() => { const m = new Map<string, number>(); fv.forEach(v => { const z = zoneTravailOf(v); m.set(z, (m.get(z) || 0) + 1); }); return Array.from(m.entries()).map(([name, value]) => ({ name, value })).sort((a, b) => b.value - a.value); }, [fv]);
   const fleetByDept = useMemo(() => { const m = new Map<string, number>(); fv.forEach(v => { const d = v.affectation || 'Non affecté'; m.set(d, (m.get(d) || 0) + 1); }); return Array.from(m.entries()).map(([name, value]) => ({ name, value })).sort((a, b) => b.value - a.value); }, [fv]);
   const fleetByAge = useMemo(() => {
     const buckets: Record<string, number> = { '0-2 ans': 0, '2-4 ans': 0, '4-6 ans': 0, '6-8 ans': 0, '8+ ans': 0 };
@@ -849,7 +862,7 @@ export default function Dashboard() {
       {/* ── Détail d'une zone (Répartition de la flotte / Zone de travail ou Cartographie) ── */}
       {detail && (detail.kind === 'zone-travail' || detail.kind === 'zone-carto') && (() => {
         const isCarto = detail.kind === 'zone-carto';
-        const list = fv.filter(v => isCarto ? v.zone_affectation === detail.key : (v.zone_travail || 'Non renseigné') === detail.key);
+        const list = fv.filter(v => isCarto ? v.zone_affectation === detail.key : zoneTravailOf(v) === detail.key);
         const ids = new Set(list.map(v => v.id));
         const costByVehicle = new Map<string, number>();
         fe.forEach(e => { if (ids.has(e.vehicleId)) costByVehicle.set(e.vehicleId, (costByVehicle.get(e.vehicleId) || 0) + e.montant); });
